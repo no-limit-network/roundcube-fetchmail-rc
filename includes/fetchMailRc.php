@@ -277,14 +277,8 @@ class fetchMailRc
             $this->fk_user
         );
         $user = $this->rcmail->db->fetch_assoc($sql_result);
-
-        $sql_default_identigy = $sql_result = $this->rcmail->db->query(
-            "SELECT * FROM " . get_table_name('identities') . " WHERE standard=1 AND user_id=?",
-            $this->fk_user
-        );
-        $default_identity = $this->rcmail->db->fetch_assoc($sql_result);
-
-        if (empty($default_identity) || empty($user)) {
+        
+        if (empty($user)) {
             throw new Exception($this->rcmail->gettext('fetchmail_rc.error_during_user_retrieving'));
         }
         
@@ -297,16 +291,17 @@ class fetchMailRc
 
         // Generate command
         $command = sprintf(
-            'echo poll %s with protocol %s user %s password %s is %s %s | LANG="' . $user['language'] . '.utf8" %s 2>&1',
-            escapeshellarg($this->mail_host),
-            escapeshellarg($this->mail_protocol),
-            escapeshellarg($this->mail_username),
-            escapeshellarg($this->get_mail_password()),
-            escapeshellarg($default_identity['email']),
+            'echo "poll %s with protocol %s user %s password %s is %s %s" | LANG="' . $user['language'] . '.utf8" %s 2>&1',
+            escapeshellarg(filter_var($this->mail_host, FILTER_SANITIZE_STRING)),
+            filter_var($this->mail_protocol, FILTER_SANITIZE_STRING),
+            escapeshellarg(filter_var($this->mail_username, FILTER_VALIDATE_EMAIL)),
+            escapeshellarg(filter_var($this->get_mail_password(), FILTER_UNSAFE_RAW)),
+            escapeshellarg($user['username']),
             ($this->mail_ssl == 1 ? 'ssl' : ''),
             escapeshellcmd($fetchmailCommandPart)
         );
-                
+        
+        
 
         // Launch command
         $output_lines = $returned_code = null;
@@ -314,17 +309,13 @@ class fetchMailRc
         // Throw errors if necessary
         switch ($returned_code) {
             case "0":
-                $errorsFound = false;
                 $errorMessages = array();
                 foreach ($output_lines as $currentLine) {
                     if (preg_match("/^fetchmail/i", $currentLine)) {
-                        $errorsFound = true;
                         $errorMessages[] = $currentLine;
                     }
                 }
-                if ($errorsFound) {
-                    throw new Exception(implode("\n", $errorMessages));
-                }
+                throw new Exception(implode("\n", $errorMessages));
                 break;
 
             case "1":
